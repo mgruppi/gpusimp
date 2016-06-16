@@ -1,0 +1,16 @@
+16 vertices read.
+18 faces read.
+Initializing edge costs.
+Init edges.
+Edges: 33
+[0;33mTarget vertex count: 15[0m
+Collapse: 8-15
+***Faces 16 X 15
+(9 15 14)
+(1 7 13)
+Writing output to ../models/intersection10_QEM.off
+Output: 15 vertices - 17 faces.
+[0;31mBounding box(min): -4 -3 0
+[0;31mBounding box(max): 4 3 0.4
+Length: 8 6 0.4
+[0m

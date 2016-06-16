@@ -1,0 +1,84 @@
+16 vertices read.
+18 faces read.
+Initializing edge costs.
+Init edges.
+Edges: 33
+[0;33mTarget vertex count: 4[0m
+Collapse: 8-15
+***Faces 16 X 15
+(9 15 14)
+(1 7 13)
+Collapse: 1-15
+Collapse: 15-13
+Collapse: 13-14
+***Faces 1 X 6
+(0 3 14)
+(4 6 13)
+***Faces 1 X 7
+(0 3 14)
+(13 6 7)
+***Faces 3 X 7
+(3 4 14)
+(13 6 7)
+Collapse: 3-4
+Collapse: 7-14
+Collapse: 0-4
+***Faces 0 X 15
+(4 14 2)
+(15 7 13)
+Collapse: 4-12
+***Faces 0 X 2
+(12 14 2)
+(0 4 3)
+***Faces 0 X 15
+(12 14 2)
+(15 7 13)
+Collapse: 2-9
+***Faces 0 X 2
+(12 14 9)
+(0 4 3)
+***Faces 0 X 8
+(12 14 9)
+(2 15 8)
+***Faces 0 X 15
+(12 14 9)
+(15 7 13)
+Collapse: 12-11
+***Faces 6 X 2
+(11 6 14)
+(0 4 3)
+***Faces 6 X 14
+(11 6 14)
+(0 12 4)
+***Faces 0 X 2
+(11 14 9)
+(0 4 3)
+***Faces 0 X 8
+(11 14 9)
+(2 15 8)
+***Faces 0 X 15
+(11 14 9)
+(15 7 13)
+Collapse: 9-10
+***Faces 0 X 2
+(11 14 10)
+(0 4 3)
+***Faces 0 X 8
+(11 14 10)
+(2 15 8)
+***Faces 0 X 15
+(11 14 10)
+(15 7 13)
+Collapse: 14-6
+***Faces 0 X 1
+(11 6 10)
+(0 4 14)
+***Faces 0 X 2
+(11 6 10)
+(0 4 3)
+Writing output to ../models/intersection80_ELEN.off
+Output: 4 vertices - 2 faces.
+[0;31mBounding box(min): -4 -3 0
+[0;31mBounding box(max): 4 3 0.4
+Length: 8 6 0.4
+[0m
