@@ -45,9 +45,9 @@ public:
   thrust::host_vector<bool> h_face_removed;
   //EDGES
   thrust::host_vector<int> h_edges; //Every 2 positions is a half-edge [vfrom,vto]
-  thrust::host_vector<double> h_edge_costs; //Cost of edge i
-  thrust::host_vector<int> h_edge_from_header; //[EDGE_DATA_POSITION,EDGE_DATA_SIZE,CONTINUES_TO]
-  thrust::host_vector<int> h_edge_from_data; //[EDGE_ID, ..., EDGE_ID]
+  thrust::host_vector<double> h_edge_cost; //Cost of edge i
+  thrust::host_vector<int> h_vert_edge_header; //[EDGE_DATA_POSITION,EDGE_DATA_SIZE,CONTINUES_TO]
+  thrust::host_vector<int> h_vert_edge_data; //[EDGE_ID, ..., EDGE_ID]
   thrust::host_vector<bool> h_edge_removed; //bool
 
 

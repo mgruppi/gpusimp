@@ -9,7 +9,8 @@
 const int HEADER_SIZE = 3;
 const int FACE_SIZE = 3;
 const int VERTEX_SIZE = 3;
-const int FACE_DATA_BATCH_SIZE = 10;
+const int FACE_DATA_BATCH_SIZE = 50;
+const int EDGE_DATA_BATCH_SIZE = 50;
 const int QUADRIC_SIZE = 16; //Quadric for a vertex is a 4x4 matrix
 const int EDGE_SIZE = 2;
 
@@ -26,10 +27,10 @@ const int EDGE_SIZE = 2;
 
 //ACCESS TO EDGES
 #define getEdgeVertexId(edge,vid) h_edges[EDGE_SIZE*edge+vid] //Get vertex id (0 or 1) of edge
-#define getEdgeHeaderPos(vid) h_edge_from_header[HEADER_SIZE*vid]
-#define getEdgeCurrSize(vid) h_edge_from_header[HEADER_SIZE*vid]
-#define edgeIncreaseSize(vid) h_edge_from_header[HEADER_SIZE*vid]
-#define getEdgeId(vid,p) h_edge_from_data[getEdgeHeaderPos(vid)+p]
+#define getEdgeHeaderPos(vid) h_vert_edge_header[HEADER_SIZE*vid]
+#define getEdgeCurrSize(vid) h_vert_edge_header[HEADER_SIZE*vid+1]
+#define edgeIncreaseSize(vid) h_vert_edge_header[HEADER_SIZE*vid+1]++
+#define getEdgeDataId(vid,p) h_vert_edge_data[getEdgeHeaderPos(vid)+p]
 
 //Operations
 #define getPlacementX(vid1,vid2) ((getX(vid1)+getX(vid2))/2
@@ -143,6 +144,17 @@ void SimpGPU::initEdges()
 
   gettime(te0);
   h_edges.resize(n_faces*6);//Estimate an initial size for edge vector
+  h_vert_edge_header.resize(HEADER_SIZE*n_vertices);
+  h_vert_edge_data.resize(EDGE_DATA_BATCH_SIZE*n_vertices);
+
+  //init HEADER array
+  for(int i = 0; i < n_vertices; ++i)
+  {
+    h_vert_edge_header[HEADER_SIZE*i] = EDGE_DATA_BATCH_SIZE*i;
+    h_vert_edge_header[HEADER_SIZE*i+1] = 0;
+    h_vert_edge_header[HEADER_SIZE*i+2] = -1;
+  }
+
   int eid = 0;
   for(int i = 0; i < n_faces; ++i)
   {
@@ -155,32 +167,42 @@ void SimpGPU::initEdges()
     //Sort vector vid so ids are in ascending order
 
     //CHANGED FROM CPU
-    //std::sort(vid.begin(),vid.end());
+    std::sort(vid.begin(),vid.end());
 
-    //For this face, we'll have half-edges: v0v1, v0v2, v1v2
-    bool found_edge = false;
+    int w[3][2] = {{0,1},{0,2},{1,2}};
+
+    for(int i = 0; i < 3; ++i)
+    {
+      bool found_edge = false;
+      cerr << "eid: " << eid << " | " << vid[w[i][0]] << "," << vid[w[i][1]] << endl;
+
+      for(int j = 0; j < getEdgeCurrSize(vid[w[i][0]]); ++j)
+      {
+        //Check wheter edge already exists
+        if(getEdgeVertexId(getEdgeDataId(vid[w[i][0]],j),1) == vid[w[i][1]])
+          found_edge = true;
+      }
+      if(!found_edge)
+      {
+        h_edges[EDGE_SIZE*eid] = vid[w[i][0]];
+        h_edges[EDGE_SIZE*eid+1] = vid[w[i][1]];
+        cerr << "adding " << eid << " to " << getEdgeHeaderPos(vid[w[i][0]])+getEdgeCurrSize(vid[w[i][0]]) << endl;
+        h_vert_edge_data[getEdgeHeaderPos(vid[w[i][0]])+getEdgeCurrSize(vid[w[i][0]])] = eid;
+        cerr << "added: " << h_vert_edge_data[getEdgeHeaderPos(vid[w[i][0]])+getEdgeCurrSize(vid[w[i][0]])] << endl;
+        //h_vert_edge_data[getEdgeHeaderPos(vid[w[i][1])+getEdgeCurrSize(vid[w[i][1]])]]=eid;
+        edgeIncreaseSize(vid[w[i][0]]);
+        //edgeIncreaseSize(vid[w[i][1]]);
+        eid++;
+      }
+    }
+
 
     //TODO: check if edge exists and do not add it
-    //v0v1
-    h_edges[EDGE_SIZE*eid] = vid[0];
-    h_edges[EDGE_SIZE*eid] = vid[1];
-    getCost(eid);
-    eid++;
-    //v0v2
-    h_edges[EDGE_SIZE*eid] = vid[0];
-    h_edges[EDGE_SIZE*eid] = vid[2];
-    getCost(eid);
-    eid++;
-    //v1v2
-    h_edges[EDGE_SIZE*eid] = vid[1];
-    h_edges[EDGE_SIZE*eid] = vid[2];
-    getCost(eid);
-    eid++;
   }
   gettime(te1);
   te = diff(te0,te1);
   cerr << "Time to init edges: " << getMilliseconds(te) << endl;
-  cerr << "No. of edges: " << eid+1 <<endl;
+  cerr << "No. of edges: " << eid <<endl;
 }
 
 void SimpGPU::initQuadrics()
