@@ -21,6 +21,9 @@ public:
   void initEdges();
   void initQuadrics();
 
+  //Simplification
+  double getCost(int eid); //Get cost form edge eid
+  double updateCosts(int vid);//Update costs for vid's edges
   void simplify(int, int);
 
   //Etc

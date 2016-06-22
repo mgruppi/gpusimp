@@ -25,7 +25,7 @@ const int EDGE_SIZE = 2;
 #define getZ(vid) h_vertices[VERTEX_SIZE*vid+2]
 
 //ACCESS TO EDGES
-#define getEdgeVertexId(edge,vid) h_edges[EDGE_SIZE*face+vid]
+#define getEdgeVertexId(edge,vid) h_edges[EDGE_SIZE*edge+vid] //Get vertex id (0 or 1) of edge
 #define getEdgeHeaderPos(vid) h_edge_from_header[HEADER_SIZE*vid]
 #define getEdgeCurrSize(vid) h_edge_from_header[HEADER_SIZE*vid]
 #define edgeIncreaseSize(vid) h_edge_from_header[HEADER_SIZE*vid]
@@ -49,7 +49,7 @@ void SimpGPU::simplify(int goal, int gridres=1)
   cerr << "Computing initial quadrics...\n";
   initQuadrics();
   cerr << "Computing edges...\n";
-  //initEdges();
+  initEdges();
 
   updateSurface();
 
@@ -138,6 +138,11 @@ void SimpGPU::initDataStructures()
 void SimpGPU::initEdges()
 {
 
+  cerr << "Init edges.\n";
+  timespec te, te0, te1;
+
+  gettime(te0);
+  h_edges.resize(n_faces*6);//Estimate an initial size for edge vector
   int eid = 0;
   for(int i = 0; i < n_faces; ++i)
   {
@@ -148,19 +153,34 @@ void SimpGPU::initEdges()
     //We'll create only half-edges such that id(v0) < id(v1)
     //This is reasonable since the placement vertex is always at the edges's midpoint
     //Sort vector vid so ids are in ascending order
-    std::sort(vid.begin(),vid.end());
+
+    //CHANGED FROM CPU
+    //std::sort(vid.begin(),vid.end());
 
     //For this face, we'll have half-edges: v0v1, v0v2, v1v2
     bool found_edge = false;
 
+    //TODO: check if edge exists and do not add it
+    //v0v1
     h_edges[EDGE_SIZE*eid] = vid[0];
     h_edges[EDGE_SIZE*eid] = vid[1];
-
-    //...
-
-
-
+    getCost(eid);
+    eid++;
+    //v0v2
+    h_edges[EDGE_SIZE*eid] = vid[0];
+    h_edges[EDGE_SIZE*eid] = vid[2];
+    getCost(eid);
+    eid++;
+    //v1v2
+    h_edges[EDGE_SIZE*eid] = vid[1];
+    h_edges[EDGE_SIZE*eid] = vid[2];
+    getCost(eid);
+    eid++;
   }
+  gettime(te1);
+  te = diff(te0,te1);
+  cerr << "Time to init edges: " << getMilliseconds(te) << endl;
+  cerr << "No. of edges: " << eid+1 <<endl;
 }
 
 void SimpGPU::initQuadrics()
@@ -198,7 +218,8 @@ void SimpGPU::initQuadrics()
         vvy = vvy/mag;
         vvz = vvz/mag;
         //Apply v0 to find parameter d of plane equation
-        double d = vvx*getX(v0) + vvy*getY(v0) + vvz*getZ(v0);
+        double d = vvx*getX(v0) + vvy*getY(v0);
+        d += vvz*getZ(v0);
         d*=-1;
         double plane_eq[4]={vvx,vvy,vvz,d};
         //For this plane, the fundamental quadric Kp is the product of vectors plane_eq and plane_eq(transposed) (garland97)
@@ -218,6 +239,37 @@ void SimpGPU::initQuadrics()
   gettime(tq1);
   tq = diff(tq0,tq1);
   cerr << "Time to initialize quadrics: " << getMilliseconds(tq) << endl;
+}
+
+double SimpGPU::getCost(int eid)
+{
+  double tempQ[16] = {0}; //Temporary placement quadric
+  quadricCopy(tempQ,h_quadrics.data()+(QUADRIC_SIZE*getEdgeVertexId(eid,0)));
+  quadricAdd(tempQ,h_quadrics.data()+(QUADRIC_SIZE*getEdgeVertexId(eid,1)));
+  double tempV[4];//TEmporary vertex placement
+  tempV[0] = getPlacementX(getEdgeVertexId(eid,0), getEdgeVertexId(eid,1)));
+  tempV[1] = getPlacementY(getEdgeVertexId(eid,0), getEdgeVertexId(eid,1)));
+  tempV[2] = getPlacementZ(getEdgeVertexId(eid,0), getEdgeVertexId(eid,1)));
+  tempV[3] = 1;
+
+  //calculate error (vQvT)
+  double vQ[4] = {0};
+  double cost = 0;
+  for(int k = 0; k < 4; ++k)
+  {
+    for( int l = 0; l < 4; l++)
+    {
+      vQ[k] += tempV[l]*tempQ[4*k+l];
+    }
+  }
+
+  for(int i = 0; i < 4; ++i)
+  {
+    cost += vQ[i]*tempV[i];
+  }
+
+  return cost;
+
 }
 
 //Update surface for output purposes ONLY
