@@ -2,6 +2,9 @@
 #include <algorithm>
 #include <cmath>
 
+#include <thrust/sort.h>
+#include <thrust/execution_policy.h>
+
 
 
 //get position from header array
@@ -43,6 +46,13 @@ SimpGPU::SimpGPU(Surface* so)
 
 }
 
+
+//Edge comparison function
+bool compareEdges(int left, int right)
+{
+  return h_edge_cost[left] < h_edge_cost[right];
+}
+
 void SimpGPU::simplify(int goal, int gridres=1)
 {
   cerr << "Initializing Data Structures...\n";
@@ -51,6 +61,9 @@ void SimpGPU::simplify(int goal, int gridres=1)
   initQuadrics();
   cerr << "Computing edges...\n";
   initEdges();
+
+  int vertices_removed = 0;
+  cerr << "Target vertex count: " << n_vertices - goal << endl;
 
   updateSurface();
 
@@ -174,7 +187,7 @@ void SimpGPU::initEdges()
     for(int i = 0; i < 3; ++i)
     {
       bool found_edge = false;
-      cerr << "eid: " << eid << " | " << vid[w[i][0]] << "," << vid[w[i][1]] << endl;
+      //cerr << "eid: " << eid << " | " << vid[w[i][0]] << "," << vid[w[i][1]] << endl;
 
       for(int j = 0; j < getEdgeCurrSize(vid[w[i][0]]); ++j)
       {
@@ -186,9 +199,9 @@ void SimpGPU::initEdges()
       {
         h_edges[EDGE_SIZE*eid] = vid[w[i][0]];
         h_edges[EDGE_SIZE*eid+1] = vid[w[i][1]];
-        cerr << "adding " << eid << " to " << getEdgeHeaderPos(vid[w[i][0]])+getEdgeCurrSize(vid[w[i][0]]) << endl;
+        //cerr << "adding " << eid << " to " << getEdgeHeaderPos(vid[w[i][0]])+getEdgeCurrSize(vid[w[i][0]]) << endl;
         h_vert_edge_data[getEdgeHeaderPos(vid[w[i][0]])+getEdgeCurrSize(vid[w[i][0]])] = eid;
-        cerr << "added: " << h_vert_edge_data[getEdgeHeaderPos(vid[w[i][0]])+getEdgeCurrSize(vid[w[i][0]])] << endl;
+        //cerr << "added: " << h_vert_edge_data[getEdgeHeaderPos(vid[w[i][0]])+getEdgeCurrSize(vid[w[i][0]])] << endl;
         //h_vert_edge_data[getEdgeHeaderPos(vid[w[i][1])+getEdgeCurrSize(vid[w[i][1]])]]=eid;
         edgeIncreaseSize(vid[w[i][0]]);
         //edgeIncreaseSize(vid[w[i][1]]);
@@ -197,12 +210,26 @@ void SimpGPU::initEdges()
     }
 
 
-    //TODO: check if edge exists and do not add it
   }
+
+  //COMPUTE COSTS
+  n_edges = eid;
+  h_edge_cost.resize(n_edges);
+  h_edge_removed.resize(n_edges);
+  h_edge_queue.resize(n_edges);
+  for(int i = 0; i < eid; ++i)
+  {
+    h_edge_cost[i] = getCost(i);
+    h_edge_queue[i] = i;
+    //cerr << "edge " << i << " - cost " << h_edge_cost[i] << " - removed " << h_edge_removed[i] << endl;
+  }
+
+  std::sort(h_edge_queue.data(),h_edge_queue.data()+n_edges,compareEdges);
+
   gettime(te1);
   te = diff(te0,te1);
   cerr << "Time to init edges: " << getMilliseconds(te) << endl;
-  cerr << "No. of edges: " << eid <<endl;
+  cerr << "No. of edges: " << n_edges <<endl;
 }
 
 void SimpGPU::initQuadrics()
