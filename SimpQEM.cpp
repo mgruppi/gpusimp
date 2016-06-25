@@ -41,7 +41,6 @@ void SimpQEM::simplify(int goal, int gridres=1)
   int vertices_removed = 0;
   cerr << orangetty<< "Target vertex count: " << s->m_points.size() - goal << deftty<< endl;
 
-
   clock_gettime(CLOCK_REALTIME, &t0);
   while(vertices_removed < goal)
   {
