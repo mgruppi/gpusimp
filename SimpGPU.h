@@ -24,7 +24,7 @@ public:
   void initUniformGrid();
 
   //Simplification
-  double getCost(int eid); //Get cost form edge eid
+  //double getCost(int eid); //Get cost form edge eid
   double updateCosts(int vid);//Update costs for vid's edges
   void simplify(int, int);
 
@@ -34,7 +34,7 @@ public:
   //Host
   Surface* s;
   int n_faces, n_vertices, n_edges;
-  int grid_res;
+
 
 
 
