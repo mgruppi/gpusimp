@@ -9,6 +9,8 @@
 
 //TIME
 long time_collapse = 0;
+long time_simplify = 0;
+long time_sorting = 0;
 
 //get position from header array
 //Size of each structure on arrays
@@ -105,6 +107,11 @@ thrust::host_vector<int> h_prev_queue_size;
 double dim[3];
 double offset[3];
 int grid_res;
+
+//FUNCTIONS
+
+void printTimes();
+
 
 SimpGPU::SimpGPU(Surface* so)
 {
@@ -375,6 +382,10 @@ void collapse(int eid)
     cerr <<"***WARNING v2 removed.\n";
     cin.get();
   }
+  else if( v1 == v2)
+  {
+    cerr << "*!*!*!*!\n";
+  }
 
   // cerr << "\nv1 to ";
   // for(int i = 0; i < getEdgeToCurrSize(v1); ++i) cerr << getEdgeToDataId(v1,i) << " ";
@@ -467,8 +478,6 @@ void collapse(int eid)
   removeEdge(eid);
   //Remove DOUBLE EDGES
   //Edges of which destiny already exists in v2
-//  cerr << "v1 " << v1 << " - edges " << getEdgeFromCurrSize(v1) << endl;
-  //cerr << "v2 " << v2 << " - edges " << getEdgeFromCurrSize(v2) << endl;
   for(int i = 0; i < getEdgeFromCurrSize(v1); ++i)
   {
     int eit = h_vert_edge_from_data[getEdgeFromHeaderPos(v1)+i];
@@ -493,8 +502,6 @@ void collapse(int eid)
   //IMPLEMENT TO_EDGE removal
 
   //Edges of which source already exists in v2
-  //cerr << "v1 " << v1 << " - edges " << getEdgeToCurrSize(v1) << endl;
-  //cerr << "v2 " << v2 << " - edges " << getEdgeToCurrSize(v2) << endl;
   for(int i = 0; i < getEdgeToCurrSize(v1); ++i)
   {
 
@@ -522,31 +529,46 @@ void collapse(int eid)
   //Append edge lists
   for(int i = 0 ; i < getEdgeFromCurrSize(v1);++i)
   {
-    h_vert_edge_from_data[v2*EDGE_DATA_BATCH_SIZE+getEdgeFromCurrSize(v2)] = getEdgeFromDataId(v1,i);
 
-    //Update <from> pointer
-    //cerr << "Updating from " << getEdgeFromDataId(v1,i) << endl;
-    h_edges[EDGE_SIZE*getEdgeFromDataId(v1,i)] = v2;
-    edgeFromIncreaseSize(v2);
+    int eit = getEdgeFromDataId(v2,i);
+    if(getEdgeVertexId(eit,1) == v1)
+    {
+      removeEdge(eit);
+      i--;
+    }
+    else
+    {
+      h_vert_edge_from_data[v2*EDGE_DATA_BATCH_SIZE+getEdgeFromCurrSize(v2)] = getEdgeFromDataId(v1,i);
 
-  }
+      //Update <from> pointer
+      //cerr << "Updating from " << getEdgeFromDataId(v1,i) << endl;
+      h_edges[EDGE_SIZE*getEdgeFromDataId(v1,i)] = v2;
+      edgeFromIncreaseSize(v2);
+    }
 
-  if(v1 == 189)
-  {
-    cerr << "*!*!* " << v1 << " - > " << v2 << endl;
+
+
   }
 
   for(int i = 0; i < getEdgeToCurrSize(v1); ++i)
   {
+    int eit = getEdgeToDataId(v1,i);
 
-    //cerr <<"updating " << getEdgeToDataId(v1,i) << " | ";
-    h_vert_edge_to_data[v2*EDGE_DATA_BATCH_SIZE+getEdgeToCurrSize(v2)] = h_vert_edge_to_data[v1*EDGE_DATA_BATCH_SIZE+i];
-    //Update <to> pointer
-    h_edges[EDGE_SIZE*getEdgeToDataId(v1,i)+1] = v2;
-    //cerr << "Updating to " << getEdgeToDataId(v1,i) << " >>> " << getEdgeVertexId(getEdgeToDataId(v1,i),0) << "-"<<getEdgeVertexId(getEdgeToDataId(v1,i),1) << endl;
-    //cerr << h_edges[EDGE_SIZE*getEdgeToDataId(v1,i)] << " - " << h_edges[EDGE_SIZE*getEdgeToDataId(v1,i)+1] << endl;
-    edgeToIncreaseSize(v2);
-
+    if(getEdgeVertexId(eit,0) == v2)
+    {
+      removeEdge(eit);
+      i--;
+    }
+    else
+    {
+      //cerr <<"updating " << getEdgeToDataId(v1,i) << " | ";
+      h_vert_edge_to_data[v2*EDGE_DATA_BATCH_SIZE+getEdgeToCurrSize(v2)] = h_vert_edge_to_data[v1*EDGE_DATA_BATCH_SIZE+i];
+      //Update <to> pointer
+      h_edges[EDGE_SIZE*getEdgeToDataId(v1,i)+1] = v2;
+      //cerr << "Updating to " << getEdgeToDataId(v1,i) << " >>> " << getEdgeVertexId(getEdgeToDataId(v1,i),0) << "-"<<getEdgeVertexId(getEdgeToDataId(v1,i),1) << endl;
+      //cerr << h_edges[EDGE_SIZE*getEdgeToDataId(v1,i)] << " - " << h_edges[EDGE_SIZE*getEdgeToDataId(v1,i)+1] << endl;
+      edgeToIncreaseSize(v2);
+    }
   }
 
 
@@ -632,6 +654,8 @@ void SimpGPU::simplify(int goal, int gridres=1)
 
   //STILL NEED TO_EDGES
 
+  timespec ts, ts0, ts1;
+  gettime(ts0);
   //while(vertices_removed < goal)
   {
     initUniformGrid();
@@ -652,15 +676,35 @@ void SimpGPU::simplify(int goal, int gridres=1)
         h_cell_queue_size[i]--;
 
         //cin.get();
+        timespec t, t0, t1;
+        gettime(t0);
         collapse(eid);
+        gettime(t1);
+
+        t = diff(t0,t1);
+        time_collapse+=getNanoseconds(t);
+
+
         quadricAdd(h_quadrics.data()+(h_edges[eid*EDGE_SIZE+1]*QUADRIC_SIZE), h_quadrics.data()+(h_edges[eid*EDGE_SIZE]*QUADRIC_SIZE));
         vr++;
         vertices_removed++;
         updateEdgeCosts(getEdgeVertexId(eid,1));
+        gettime(t0);
         updateQueue(i);
+        gettime(t1);
+
+        t = diff(t0,t1);
+        time_sorting+=getNanoseconds(t);
       }
     }
   }
+  gettime(ts1);
+
+  ts = diff(ts0,ts1);
+
+  time_simplify+=getNanoseconds(ts);
+
+  printTimes();
 
 
   updateSurface();
@@ -924,4 +968,12 @@ void SimpGPU::updateSurface()
     s->m_faces[j]->points[2] = s->m_points[getFaceVertexId(j,2)];
     s->m_faces[j]->removed = h_face_removed[j];
   }
+}
+
+
+void printTimes()
+{
+  cerr << "Time sorting: " << time_sorting/1000000 << " ms\n";
+  cerr << "Time collapsing: " << time_collapse/1000000 << " ms\n";
+  cerr << "Time simplifying (total): " << time_simplify/1000000 << " ms\n";
 }
