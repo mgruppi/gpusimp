@@ -352,6 +352,7 @@ void removeEdge(int eid)
     }
   }
 
+    //cerr << "edge " << eid << " removed\n";
     h_edge_removed[eid] = true;
 
 }
@@ -361,18 +362,42 @@ void collapse(int eid)
   int v1 = getEdgeVertexId(eid,0);
   int v2 = getEdgeVertexId(eid,1);
 
-  //cin.get();
 
   cerr << "*********Collapsing " << eid << ": "<< v1 << " -> " << v2 << " = " << h_edge_cost[eid] <<  endl;
 
+  if(h_vertex_removed[v1])
+  {
+    cerr << "***WARNING v1 removed.\n";
+    cin.get();
+  }
+  else if (h_vertex_removed[v2])
+  {
+    cerr <<"***WARNING v2 removed.\n";
+    cin.get();
+  }
+
+  cerr << "\nv1 to ";
+  for(int i = 0; i < getEdgeToCurrSize(v1); ++i) cerr << getEdgeToDataId(v1,i) << " ";
+    cerr << endl;
+  cerr << "v1 from ";
+  for(int i = 0; i < getEdgeFromCurrSize(v1); ++i) cerr << getEdgeFromDataId(v1,i) << " ";
+
+
+  cerr << "\nv2 to ";
+  for(int i = 0; i < getEdgeToCurrSize(v2); ++i) cerr << getEdgeToDataId(v2,i) << " ";
+  cerr << "\nv2 from ";
+  for(int i = 0; i < getEdgeFromCurrSize(v2); ++i) cerr << getEdgeFromDataId(v2,i) << " ";
+  cerr << endl;
   //Iterate FACES
   //We are going to remove faces containing v1 and v2 simultaneously
   //The remaining faces from v1 are going to be moved to v2's list
+  cerr << "v1 " << getFaceCurrSize(v1) << " faces ";
+  //cin.get();
   for(int i = 0; i < getFaceCurrSize(v1); ++i)
   {
     bool removeFace = false;
     int face_it = getFaceId(v1,i);
-    //cerr << "Face " << face_it << endl;
+    cerr << face_it << " ";
 
 
     if(getFaceVertexId(face_it,0) == v2 || getFaceVertexId(face_it,1)==v2 || getFaceVertexId(face_it,2) == v2)
@@ -382,6 +407,7 @@ void collapse(int eid)
       //Remove this face since it shares v1 and v2
       //Warning: check if it is already removed?
       h_face_removed[face_it] = true;
+      i--;
       //Remove face from its vertices lists
       for(int j = 0 ; j < 3; ++j)
       {
@@ -392,6 +418,7 @@ void collapse(int eid)
             //cerr << getFaceId(getFaceVertexId(face_it,j),k) << " ";
             h_vert_face_data[vid*FACE_DATA_BATCH_SIZE+k] = h_vert_face_data[vid*FACE_DATA_BATCH_SIZE+getFaceCurrSize(vid)-1];
             faceDecreaseSize(vid);
+
           }
         }
       }
@@ -409,6 +436,15 @@ void collapse(int eid)
       else if (h_faces[FACE_SIZE*face_it+2] == v1) h_faces[FACE_SIZE*face_it+2] = v2;
     }
   }
+  cerr << endl;
+
+  cerr << "Now: ";
+  for(int i = 0; i < getFaceCurrSize(v1);++i)
+  {
+    cerr << getFaceId(v1,i)<<  " ";
+  }
+  cerr << endl;
+
   //Copy list of faces from v1 to v2
   for(int i = 0; i < getFaceCurrSize(v1); ++i)
   {
@@ -423,14 +459,10 @@ void collapse(int eid)
 
   //REMOVEEDGE STARTS
 
-  cerr << "Removing edges\n";
+  //cerr << "Removing edges\n";
 
   //Update edges from v1
   removeEdge(eid);
-
-
-
-
   //Remove DOUBLE EDGES
   //Edges of which destiny already exists in v2
 //  cerr << "v1 " << v1 << " - edges " << getEdgeFromCurrSize(v1) << endl;
@@ -447,7 +479,7 @@ void collapse(int eid)
       int eit2 = h_vert_edge_from_data[getEdgeFromHeaderPos(v2)+j];
       if(getEdgeVertexId(eit,1) == getEdgeVertexId(eit2,1) || getEdgeVertexId(eit,1) == v2)
       {
-        cerr <<"Removing " << eit << endl;
+        //cerr <<"Removing " << eit << endl;
         removeEdge(eit);
         j--;
         i--;
@@ -463,7 +495,7 @@ void collapse(int eid)
   //cerr << "v2 " << v2 << " - edges " << getEdgeToCurrSize(v2) << endl;
   for(int i = 0; i < getEdgeToCurrSize(v1); ++i)
   {
-    //cin.get();
+
     int eit = h_vert_edge_to_data[getEdgeToHeaderPos(v1)+i];
     //Update <to> pointer to v2
     //h_edges[eit*EDGE_SIZE+1] = v2;
@@ -475,7 +507,7 @@ void collapse(int eid)
       //cerr << "eid2- " << eit2 << " is " << h_edges[eit2*EDGE_SIZE] << " - " << h_edges[eit2*EDGE_SIZE+1] << endl;
       if(getEdgeVertexId(eit,0) == getEdgeVertexId(eit2,0) || getEdgeVertexId(eit,0) == v2)
       {
-        cerr <<"Removing " << eit << endl;
+        //cerr <<"Removing " << eit << endl;
         removeEdge(eit);
         j--;
         i--;
@@ -484,7 +516,7 @@ void collapse(int eid)
     }
   }
 
-  cerr << "Append edges\n";
+  //cerr << "Append edges\n";
   //Append edge lists
   for(int i = 0 ; i < getEdgeFromCurrSize(v1);++i)
   {
@@ -498,24 +530,29 @@ void collapse(int eid)
 
   for(int i = 0; i < getEdgeToCurrSize(v1); ++i)
   {
+    cerr <<"updating " << getEdgeToDataId(v1,i) << " | ";
     h_vert_edge_to_data[v2*EDGE_DATA_BATCH_SIZE+getEdgeToCurrSize(v2)] = h_vert_edge_to_data[v1*EDGE_DATA_BATCH_SIZE+i];
 
     //Update <to> pointer
     h_edges[EDGE_SIZE*getEdgeToDataId(v1,i)+1] = v2;
     //cerr << "Updating to " << getEdgeToDataId(v1,i) << " >>> " << getEdgeVertexId(getEdgeToDataId(v1,i),0) << "-"<<getEdgeVertexId(getEdgeToDataId(v1,i),1) << endl;
+    cerr << h_edges[EDGE_SIZE*getEdgeToDataId(v1,i)] << " - " << h_edges[EDGE_SIZE*getEdgeToDataId(v1,i)+1] << endl;
 
     edgeToIncreaseSize(v2);
   }
 
-  cerr << "v1 from ";
-  for(int i = 0; i < getEdgeFromCurrSize(v1); ++i) cerr << getEdgeFromDataId(v1,i) << " ";
+
   cerr << "\nv1 to ";
   for(int i = 0; i < getEdgeToCurrSize(v1); ++i) cerr << getEdgeToDataId(v1,i) << " ";
+    cerr << endl;
+  cerr << "v1 from ";
+  for(int i = 0; i < getEdgeFromCurrSize(v1); ++i) cerr << getEdgeFromDataId(v1,i) << " ";
 
-  cerr << "\nv2 from ";
-  for(int i = 0; i < getEdgeFromCurrSize(v2); ++i) cerr << getEdgeFromDataId(v2,i) << " ";
+
   cerr << "\nv2 to ";
   for(int i = 0; i < getEdgeToCurrSize(v2); ++i) cerr << getEdgeToDataId(v2,i) << " ";
+  cerr << "\nv2 from ";
+  for(int i = 0; i < getEdgeFromCurrSize(v2); ++i) cerr << getEdgeFromDataId(v2,i) << " ";
   cerr << endl;
 
   //REMOVEEDGE ENDS
@@ -523,13 +560,13 @@ void collapse(int eid)
   //REMOVE VERTEX
   h_vertex_removed[v1] = true;
 
-  cerr << "Finished collapse\n";
+  //cerr << "Finished collapse\n";
 
 }
 
 void updateEdgeCosts(int vid)
 {
-  cerr <<"Updating costs for vid " << vid << endl;
+  //cerr <<"Updating costs for vid " << vid << endl;
   for(int i = 0 ; i < getEdgeFromCurrSize(vid); ++i)
   {
     int eid = getEdgeFromDataId(vid,i);
@@ -542,15 +579,32 @@ void updateEdgeCosts(int vid)
   {
 
     int eid = getEdgeToDataId(vid,i);
-    cerr << "Updating eid " << eid << " " << h_edges[eid*EDGE_SIZE] << "-" << h_edges[eid*EDGE_SIZE+1] << " = " << h_edge_cost[eid] << " ";
+    //cerr << "Updating eid " << eid << " " << h_edges[eid*EDGE_SIZE] << "-" << h_edges[eid*EDGE_SIZE+1] << " = " << h_edge_cost[eid] << " ";
     if(isEntirelyInCell(eid) && isCrownInCell(getEdgeVertexId(eid,0)) && isCrownInCell(getEdgeVertexId(eid,1)))
     {
       h_edge_cost[eid] = getCost(eid);
     }
-    cerr << " = " << h_edge_cost[eid] << endl;
+    //cerr << " = " << h_edge_cost[eid] << endl;
   }
 
   //std::sort(h_cell_queue.data()+(h_vertex_in_cell[vid]*n_cells),h_cell_queue.data()+(h_vertex_in_cell[vid]*n_cells+h_cell_queue_size[vid]),compareEdges);
+}
+
+void updateQueue(int cell)
+{
+
+  for (int i = 0; i < h_cell_queue_size[cell]; ++i)
+  {
+    if(h_edge_removed[h_cell_queue[i]])
+    {
+      cerr << "->>edge " << h_cell_queue[i] << " has been removed.\n";
+      h_cell_queue[i] = h_cell_queue[h_cell_queue_size[cell]-1];
+      h_cell_queue_size[cell]--;
+      i--;
+    }
+  }
+
+  std::sort(h_cell_queue.data()+(cell*n_cells),h_cell_queue.data()+(cell*n_cells+h_cell_queue_size[cell]),compareEdges);
 }
 
 void SimpGPU::simplify(int goal, int gridres=1)
@@ -584,18 +638,18 @@ void SimpGPU::simplify(int goal, int gridres=1)
       while(vr < h_initial_vertices[i]/grid_res && vertices_removed < goal && h_cell_queue_size[i]>0)
       {
         int queue_it = h_cell_queue_size[i]-1;
-        cerr << "cell " << i << " queue_it " << queue_it << endl;
+        //cerr << "cell " << i << " queue_it " << queue_it << endl;
         //Last position should contain the least cost edge
         int eid = h_cell_queue[i*n_cells+queue_it];
         h_cell_queue_size[i]--;
 
-
+        //cin.get();
         collapse(eid);
         quadricAdd(h_quadrics.data()+(h_edges[eid*EDGE_SIZE+1]*QUADRIC_SIZE), h_quadrics.data()+(h_edges[eid*EDGE_SIZE]*QUADRIC_SIZE));
         vr++;
         vertices_removed++;
         updateEdgeCosts(getEdgeVertexId(eid,1));
-        std::sort(h_cell_queue.data()+(i*n_cells),h_cell_queue.data()+(i*n_cells+h_cell_queue_size[i]),compareEdges);
+        updateQueue(i);
       }
     }
   }
@@ -779,7 +833,7 @@ void SimpGPU::initEdges()
 
   for(int i = 0; i < n_edges; ++i)
   {
-    cerr << "edge " << i << ": " << h_edges[EDGE_SIZE*i] << " - " << h_edges[EDGE_SIZE*i+1] << endl;
+   cout << "edge " << i << ": " << h_edges[EDGE_SIZE*i] << " - " << h_edges[EDGE_SIZE*i+1] << endl;
   }
 }
 
