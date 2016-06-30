@@ -33,7 +33,7 @@ public:
 
   //Host
   Surface* s;
-  int n_faces, n_vertices, n_edges;
+  int n_faces, n_vertices;
 
 
 
