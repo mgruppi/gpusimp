@@ -1,0 +1,10 @@
+34834 vertices read.
+69451 faces read.
+Initializing Data Structures...
+Time to init data structures: 2
+Computing initial quadrics...
+Time to initialize quadrics: 17
+Computing edges...
+Init edges.
+Time to init edges: 32
+No. of edges: 104288

@@ -25,7 +25,6 @@ const int EDGE_SIZE = 2;
 
 //UGRID
 const int CELL_HEADER_SIZE = 2;
-const int EDGE_HEADER_SIZE = 2;
 
 //NO.
 int n_edges = 0;
@@ -66,8 +65,7 @@ int n_edges = 0;
 #define getCellHeaderPos(cell) h_cell_header[CELL_HEADER_SIZE*cell]
 #define getCellHeaderSize(cell) h_cell_header[CELL_HEADER_SIZE*cell+1]
 #define increaseCellSize(cell) h_cell_header[CELL_HEADER_SIZE*cell+1]++
-#define getCellVertexId(cell,p) h_cell_data[getCellHeaderPos(cell)+p]
-
+#define getCellVertexId(cell,p) h_cell_vertices[cell*n_vertices+p]
 
 //HOST MEMBERS
 //VERTICES
@@ -97,6 +95,8 @@ thrust::host_vector<int> h_cell_data; //contains id of vertices inside it
 thrust::host_vector<int> h_cell_header; //Cell header containing initial position and size in h_cell vector
 thrust::host_vector<int> h_vertex_in_cell;
 thrust::host_vector<int> h_initial_vertices; //Number of initial vertices in each cell
+thrust::host_vector<int> h_cell_vertices;
+thrust::host_vector<int> h_cell_vertices_size;
 
 
 //EDGE
@@ -215,26 +215,25 @@ void SimpGPU::initUniformGrid()
   dim[1] = s->bbox.getYLen()/grid_res;
   dim[2] = s->bbox.getZLen()/grid_res;
 
-  //Deprecated
-  h_vertex_in_cell.resize(n_vertices);
-  h_cell_data.resize(n_vertices);
-  h_cell_header.resize(n_cells*CELL_HEADER_SIZE);
 
-  h_initial_vertices.resize(n_cells);
-  h_cell_queue.resize(n_edges*n_cells);
-  h_cell_queue_size.resize(n_cells);
-  h_prev_queue_size.resize(n_cells);
 
   for(int i = 0; i < n_cells; ++i)
   {
     h_initial_vertices[i] = 0;
     h_cell_queue_size[i] = 0;
+    h_cell_vertices_size[i] = 0;
   }
 
   //Compute gridcell for each vertex
   //h_vertex_in_cell stores the cell in which vertex i is located
   for(int i = 0; i < n_vertices; ++i)
   {
+
+    if(h_vertex_removed[i])
+    {
+      //cerr << "-->>>> TRUE\n";
+      continue;
+    }
     int cx = (getX(i) - offset[0])/dim[0];
     cx -= cx/grid_res;
     int cy = (getY(i) - offset[1])/dim[1];
@@ -242,45 +241,45 @@ void SimpGPU::initUniformGrid()
     long long cz = (getZ(i) - offset[2])/dim[2];
     cz -= cz/grid_res;
     int cpos = cx + grid_res*cy + grid_res*grid_res*cz;
-    //unsigned int cpos = getGridCell(i);
-    //cerr << "vertex " << i << " cell " << cpos << endl;
+
     //Add vertex to cell
     h_vertex_in_cell[i] = cpos;
     h_initial_vertices[cpos]++;
-    //cerr << "add to " << cpos*n_vertices+h_cell_header[cpos*CELL_HEADER_SIZE+1] << endl;
-    //h_cell[cpos*n_vertices+h_cell_header[cpos*CELL_HEADER_SIZE+1]] = i;
-    increaseCellSize(cpos);
+
+    //add vertex i to cell cpos
+    h_cell_vertices[cpos*n_vertices+h_cell_vertices_size[cpos]] = i;
+    h_cell_vertices_size[cpos]++;
   }
 
 
   //update headers with size of each cell
   //Every cell has a initial position and a size in h_edge_data array
-  h_cell_header[0] = 0;
-  h_cell_header[1] = 0;
-  for(int i = 1; i < n_cells;++i)
-  {
-    //set (pos) pointer
-    h_cell_header[i*CELL_HEADER_SIZE] = h_initial_vertices[i-1]+h_cell_header[(i-1)*CELL_HEADER_SIZE];
-    h_cell_header[i*CELL_HEADER_SIZE+1] = 0;
-    //cerr << "Cell " << i <<  " pos " << h_cell_header[i*CELL_HEADER_SIZE] << endl;
-  }
-
-  //TODO: Sort h_cell_data containing every vertex id according to vector h_vertex_in_cell
-  //We finally add vertex ids to h_data_array
-  for(int i = 0; i < n_vertices; ++i)
-  {
-    //cerr << "Adding " << i << " to " << h_vertex_in_cell[i] << " size " << getCellHeaderSize(h_vertex_in_cell[i]) << endl;
-    //add vertex to cell data
-    h_cell_data[getCellHeaderPos(h_vertex_in_cell[i]) + getCellHeaderSize(h_vertex_in_cell[i])] = i;
-    increaseCellSize(h_vertex_in_cell[i]);
-  }
+  // h_cell_header[0] = 0;
+  // h_cell_header[1] = 0;
+  // for(int i = 1; i < n_cells;++i)
+  // {
+  //   //set (pos) pointer
+  //   h_cell_header[i*CELL_HEADER_SIZE] = h_initial_vertices[i-1]+h_cell_header[(i-1)*CELL_HEADER_SIZE];
+  //   h_cell_header[i*CELL_HEADER_SIZE+1] = 0;
+  //   //cerr << "Cell " << i <<  " pos " << h_cell_header[i*CELL_HEADER_SIZE] << endl;
+  // }
+  //
+  // //TODO: Sort h_cell_data containing every vertex id according to vector h_vertex_in_cell
+  // //We finally add vertex ids to h_data_array
+  // for(int i = 0; i < n_vertices; ++i)
+  // {
+  //   //cerr << "Adding " << i << " to " << h_vertex_in_cell[i] << " size " << getCellHeaderSize(h_vertex_in_cell[i]) << endl;
+  //   //add vertex to cell data
+  //   h_cell_data[getCellHeaderPos(h_vertex_in_cell[i]) + getCellHeaderSize(h_vertex_in_cell[i])] = i;
+  //   increaseCellSize(h_vertex_in_cell[i]);
+  // }
 
   //Now we compute edge queues for each cell
   //An edge will be added to queue iff it is entirely in cell and both endpoints have crown entirely in the same cell
   for(int i = 0; i < n_cells;++i)
   {
     //For every vertex in the cell, we get its edge
-    for(int j = 0; j < getCellHeaderSize(i); ++j)
+    for(int j = 0; j < h_cell_vertices_size[i]; ++j)
     {
       //For every edge of vertex j, we check if its eligible to go into queue
       for(int k = 0; k < getEdgeFromCurrSize(getCellVertexId(i,j)); ++k)
@@ -300,15 +299,15 @@ void SimpGPU::initUniformGrid()
   }
 
 
-  for (int i = 0 ; i < n_cells; ++i)
-  {
-    cerr << "CELL " << i << endl;
-    for (int j = 0 ; j < h_cell_queue_size[i]; ++j)
-    {
-      cerr << h_cell_queue[i*n_edges+j] << " ";
-    }
-    cerr << endl;
-  }
+  // for (int i = 0 ; i < n_cells; ++i)
+  // {
+  //   cerr << "CELL " << i << endl;
+  //   for (int j = 0 ; j < h_cell_queue_size[i]; ++j)
+  //   {
+  //     cerr << h_cell_queue[i*n_edges+j] << " ";
+  //   }
+  //   cerr << endl;
+  // }
 
 
   //sort queues
@@ -328,6 +327,14 @@ void SimpGPU::initUniformGrid()
 
 }
 
+
+void removeVertex(int vid)
+{
+  h_vertex_removed[vid] = true;
+  //h_vert_face_header[HEADER_SIZE*vid+1] = 0; //face size = 0;
+  //h_vert_edge_to_data[HEADER_SIZE*vid+1] = 0; //edges_to size = 0;
+  //h_vert_edge_from_data[HEADER_SIZE*vid+1] = 0; //edges_from size = 0;
+}
 
 void removeEdge(int eid)
 {
@@ -374,6 +381,7 @@ void collapse(int eid)
 
   if(h_vertex_removed[v1])
   {
+
     cerr << "***WARNING v1 removed.\n";
     cin.get();
   }
@@ -485,6 +493,13 @@ void collapse(int eid)
 
     int eit = h_vert_edge_from_data[getEdgeFromHeaderPos(v1)+i];
 
+
+    // if(eit == 101300)
+    // {
+    //   cerr << eit << " " << getEdgeVertexId(eit,0) << " " << getEdgeVertexId(eit,1) << " " << getEdgeFromCurrSize(v1) << endl;
+    // }
+
+
     if(v2 == getEdgeVertexId(eit,1)) //Remove edge v2 -> v2 (would be)
     {
       //cerr <<"removing";
@@ -502,6 +517,7 @@ void collapse(int eid)
       if(getEdgeVertexId(eit,1) == getEdgeVertexId(eit2,1))
       {
         //cerr <<"Removing " << eit << endl;
+
         edge_exists = true;
         removeEdge(eit);
         //j--;
@@ -516,12 +532,14 @@ void collapse(int eid)
       h_vert_edge_from_data[v2*EDGE_DATA_BATCH_SIZE+getEdgeFromCurrSize(v2)] = getEdgeFromDataId(v1,i);
       edgeFromIncreaseSize(v2);
     }
+
   }
 
   //Edges of which source already exists in v2
   for(int i = 0; i < getEdgeToCurrSize(v1); ++i)
   {
     int eit = h_vert_edge_to_data[getEdgeToHeaderPos(v1)+i];
+
 
     if(v2 == getEdgeVertexId(eit,0)) //This would create edge v2->v2
     {
@@ -616,8 +634,8 @@ void collapse(int eid)
   //REMOVEEDGE ENDS
 
   //REMOVE VERTEX
-  h_vertex_removed[v1] = true;
-
+  //h_vertex_removed[v1] = true;
+  removeVertex(v1);
   //cerr << "Finished collapse\n";
 
 }
@@ -655,6 +673,7 @@ void updateQueue(int cell)
   {
     if(h_edge_removed[h_cell_queue[cell*n_edges+i]])
     {
+      if(h_cell_queue[cell*n_edges+i] == 101300) cerr << "removed from queue\n";
       //cerr << "f\n";
       //cerr << "->>edge " << h_cell_queue[i] << " has been removed.\n";
       h_cell_queue[cell*n_edges+i] = h_cell_queue[cell*n_edges+h_cell_queue_size[cell]-1];
@@ -691,6 +710,22 @@ void SimpGPU::simplify(int goal, int gridres=1)
 
   timespec ts, ts0, ts1;
   gettime(ts0);
+
+  n_cells = gridres*gridres*gridres;
+  h_vertex_in_cell.resize(n_vertices);
+  h_cell_data.resize(n_vertices);
+  h_cell_header.resize(n_cells*CELL_HEADER_SIZE);
+
+  h_initial_vertices.resize(n_cells);
+  h_cell_vertices_size.resize(n_cells);
+  h_cell_vertices.resize(n_cells*n_vertices);
+
+  h_cell_queue.resize(n_edges*n_cells);
+  h_cell_queue_size.resize(n_cells);
+  h_prev_queue_size.resize(n_cells);
+
+
+
   while(vertices_removed < goal)
   {
     cerr << "Initializing Uniform Grid...\n";
