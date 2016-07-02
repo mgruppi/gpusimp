@@ -1,0 +1,22 @@
+926 vertices read.
+1848 faces read.
+Initializing Data Structures...
+Time to init data structures: 0
+Computing initial quadrics...
+Time to initialize quadrics: 0
+Computing edges...
+Init edges.
+Time to init edges: 1
+No. of edges: 2772
+Target vertex count: 93
+Initializing Uniform Grid...
+No. of cells: 1
+Time to initialize uniform grid: 0
+[0;32mGrid: 1[0m
+Time updating queue: 16 ms
+	->Time sorting: 16 ms
+Time collapsing: 0 ms
+Time simplifying (total): 18 ms
+Writing output to ../models/sphere90_GPU.off
+Output: 93 vertices - 182 faces.
+[0m
