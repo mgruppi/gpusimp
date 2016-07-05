@@ -3,7 +3,7 @@
 #include "Surface.h"
 #include <iostream>
 #include "Classes.h"
-#include "kernel.h"
+//#include "kernel.h"
 using namespace std;
 
 //Thrust includes
@@ -33,12 +33,6 @@ public:
 
   //Host
   Surface* s;
-  
-
-
-
-
-
 };
 
 #endif // _SIMPGPU_H__

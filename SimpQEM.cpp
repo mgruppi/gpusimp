@@ -8,6 +8,31 @@ void initMatrix(int q[4][4])
       q[i][j]=0;
 }
 
+//QEM
+//Add quadric matrix b to quadric matrix a
+void sumQuadrics(double a[4][4], double b[4][4])
+{
+    for(int i = 0 ; i < 4 ; ++i)
+    {
+        for(int j = 0 ; j < 4 ; ++j)
+        {
+            a[i][j]+=b[i][j];
+        }
+    }
+}
+
+//Copy b into a
+void copyQuadrics(double a[4][4], double b[4][4])
+{
+  for(int i = 0 ; i < 4 ; ++ i)
+  {
+    for (int j = 0 ; j < 4 ; ++j)
+    {
+      a[i][j] = b[i][j];
+    }
+  }
+}
+
 SimpQEM::SimpQEM(Surface* sur, int n)
 : SimpELEN(sur,n)
 {

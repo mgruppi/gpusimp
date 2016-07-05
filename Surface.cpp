@@ -14,6 +14,8 @@ typedef K::Point_3 Point3;
 typedef K::Triangle_3 Triangle3;
 
 
+
+
 Surface::Surface(string inputFile)
 {
 
@@ -625,7 +627,7 @@ void Surface::initQuadrics()
             //
             // delete vv;
         }
-        sumQuadrics((*pit)->Q,Kp);
+        //sumQuadrics((*pit)->Q,Kp);
     }
 
 }

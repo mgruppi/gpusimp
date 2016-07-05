@@ -34,11 +34,11 @@ long long int getNanoseconds(timespec);
 void gettime(timespec& t);
 
 //QEM functions
-void sumQuadrics(double a[4][4], double b[4][4]); //add b to a, result is in a
-void copyQuadrics(double a[4][4], double b[4][4]); //Copy b into a
+//void sumQuadrics(double a[4][4], double b[4][4]); //add b to a, result is in a
+//void copyQuadrics(double a[4][4], double b[4][4]); //Copy b into a
 //QEM functions for linearized matrices
-void quadricAdd(double* a, double b[16]);
-void quadricCopy(double* a, double b[16]);
+//void quadricAdd(double* a, double b[16]);
+//void quadricCopy(double* a, double b[16]);
 
 
 #endif //COMMON_H__
