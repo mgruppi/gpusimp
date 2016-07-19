@@ -6,11 +6,6 @@
 //#include "kernel.h"
 using namespace std;
 
-//Thrust includes
-#include <thrust/device_vector.h>
-#include <thrust/host_vector.h>
-
-
 class SimpGPU
 {
 

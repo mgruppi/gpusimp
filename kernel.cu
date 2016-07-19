@@ -213,13 +213,6 @@ __device__ bool isCrownInCell(int vid, int* edges, int* vert_edge_from_header, i
   return true;
 }
 
-
-
-//environmentList
-#define environmentList double* d_vertices, int d_n_vertices, bool* d_vertex_removed, double* d_quadrics, int* d_faces, int* d_vert_face_header, int* d_vert_face_data, bool* d_face_removed, int* d_edges, double* d_edge_cost, int* d_edge_queue, int* d_vert_edge_from_header, int* d_vert_edge_from_data, int* d_vert_edge_to_header, int* d_vert_edge_to_data, bool* d_edge_removed, int d_n_cells, int* d_vertex_in_cell, int* d_initial_vertices, int* d_cell_vertices, int* d_cell_vertices_size, int* d_cell_heap, int* d_cell_heap_size
-
-
-
 //Initialize device environment
 __global__ void initEnvironment(environmentList)
 {
@@ -258,13 +251,12 @@ __global__ void addEdgesIntoUniformGrid(int* vertices, int n_vertices, int* edge
     {
       for(int k = 0; k < getEdgeFromCurrSize(getCellVertexId(cell,j)); ++k)
       {
-
         int eid = getEdgeFromDataId(getCellVertexId(cell,j),k);
+        //isCrownInCell parallel (reduce an array of bool with and)
         if(isEntirelyInCell(eid, edges, vertex_in_cell) && isCrownInCell(getEdgeVertexId(eid,0), edges, vert_edge_from_header, vert_edge_from_data, vert_edge_to_header, vert_edge_to_data, vertex_in_cell) && isCrownInCell(getEdgeVertexId(eid,1),edges, vert_edge_from_header, vert_edge_from_data, vert_edge_to_header, vert_edge_to_data, vertex_in_cell))
         {
           //insert(eid, h_cell_heap.data()+getHeapHead(i), h_cell_heap_size[i]);
         }
-
       }
     }
 
@@ -273,41 +265,126 @@ __global__ void addEdgesIntoUniformGrid(int* vertices, int n_vertices, int* edge
 }
 
 
-__device__ int* gg;
-
-__global__ void initArray(int* d_a)
+//Set pointers of global variables
+__global__ void initDevice(environmentList)
 {
-  gg = d_a;
+  vertices = d_vertices;
+  vertex_removed = d_vertex_removed;
+  quadrics = d_quadrics;
+  faces = d_faces;
+  vert_face_header = d_vert_face_header;
+  vert_face_data = d_vert_face_data;
+  face_removed = d_face_removed;
+  edges = d_edges;
+  edge_cost = d_edge_cost;
+  edge_queue = d_edge_queue;
+  vert_edge_from_header = d_vert_edge_from_header;
+  vert_edge_from_data = d_vert_edge_from_data;
+  vert_edge_to_header = d_vert_edge_to_header;
+  vert_edge_to_data = d_vert_edge_to_data;
+  edge_removed = d_edge_removed;
+  vertex_in_cell = d_vertex_in_cell;
+  initial_vertices = d_initial_vertices;
+  cell_vertices = d_cell_vertices;
+  cell_vertices_size = d_cell_vertices_size;
+  cell_heap = d_cell_heap;
+  cell_heap_size = d_cell_heap_size;
 }
 
-__global__ void doubleArray(int n)
+void initDeviceEnvironment(hostList,environmentReferenceList)
 {
-  //int size = n/blockDim.x;
-  int id = threadIdx.x;
 
-  if(id < n)
-    gg[id] = 2*gg[id];
+  //INTEGERS
+  d_n_edges = h_n_edges;
+  d_n_faces = h_n_faces;
+  d_n_cells = h_n_cells;
+  d_n_vertices = h_n_vertices;
 
-}
+  //INIT_DATA_STRUCTURES
+  int size = FACE_SIZE*h_n_faces*sizeof(int);
+  cudaMalloc(&d_faces,size);
+  cudaMemcpy(d_faces, h_faces, size, cudaMemcpyHostToDevice);
 
-void initDeviceEnvironment(environmentList)
-{
-  
-}
+  size = h_n_faces*sizeof(bool);
+  cudaMalloc(&d_face_removed,size);
+  cudaMemcpy(d_face_removed, h_face_removed, size, cudaMemcpyHostToDevice);
 
-void allocate(int* h, int*& d_a)
-{
-  cudaMalloc(&d_a,100);
+  size = VERTEX_SIZE*h_n_vertices*sizeof(double);
+  cudaMalloc(&d_vertices, size);
+  cudaMemcpy(d_vertices, h_vertices, size, cudaMemcpyHostToDevice);
 
-  cudaMemcpy(d_a, h, 100, cudaMemcpyHostToDevice);
+  size = h_n_vertices*sizeof(bool);
+  cudaMalloc(&d_vertex_removed, size);
+  cudaMemcpy(d_vertex_removed, h_vertex_removed, size, cudaMemcpyHostToDevice);
 
-  initArray<<<1,1>>>(d_a);
+  size = 16*h_n_vertices*sizeof(double);
+  cudaMalloc(&d_quadrics,size);
+  cudaMemcpy(d_quadrics, h_quadrics, size, cudaMemcpyHostToDevice);
 
-  doubleArray<<<1,100>>>(100);
+  size = HEADER_SIZE*h_n_vertices*sizeof(int);
+  cudaMalloc(&d_vert_face_header, size);
+  cudaMemcpy(d_vert_face_header, h_vert_face_header, size, cudaMemcpyHostToDevice);
 
-  cudaMemcpy(h, d_a, 100, cudaMemcpyDeviceToHost);
+  size = FACE_DATA_BATCH_SIZE*h_n_vertices*sizeof(int);
+  cudaMalloc(&d_vert_face_data, size);
+  cudaMemcpy(d_vert_face_data, h_vert_face_data, size, cudaMemcpyHostToDevice);
 
-  cudaFree(d_a);
+  //INIT_EDGES
+  size = h_n_faces*6*sizeof(int);
+  cudaMalloc(&d_edges, size);
+  cudaMemcpy(d_edges, h_edges, size, cudaMemcpyHostToDevice);
+
+  size = HEADER_SIZE*h_n_vertices*sizeof(int);
+  cudaMalloc(&d_vert_edge_from_header, size);
+  cudaMemcpy(d_vert_edge_from_header, h_vert_edge_from_header, size, cudaMemcpyHostToDevice);
+
+  size = EDGE_DATA_BATCH_SIZE*h_n_vertices*sizeof(int);
+  cudaMalloc(&d_vert_edge_from_data, size);
+  cudaMemcpy(d_vert_edge_from_data, h_vert_edge_from_data, size, cudaMemcpyHostToDevice);
+
+  size = HEADER_SIZE*h_n_vertices*sizeof(int);
+  cudaMalloc(&d_vert_edge_to_header, size);
+  cudaMemcpy(d_vert_edge_to_header, h_vert_edge_to_header, size, cudaMemcpyHostToDevice);
+
+  size = EDGE_DATA_BATCH_SIZE*h_n_vertices*sizeof(int);
+  cudaMalloc(&d_vert_edge_to_data, size);
+  cudaMemcpy(d_vert_edge_to_data, h_vert_edge_to_data, size, cudaMemcpyHostToDevice);
+
+  size = h_n_edges*sizeof(double);
+  cudaMalloc(&d_edge_cost, size);
+  cudaMemcpy(d_edge_cost, h_edge_cost, size, cudaMemcpyHostToDevice);
+
+  size = h_n_edges*sizeof(bool);
+  cudaMalloc(&d_edge_removed, size);
+  cudaMemcpy(d_edge_removed, h_edge_removed, size, cudaMemcpyHostToDevice);
+
+  //UNIFORM_GRID
+  size = h_n_vertices*sizeof(int);
+  cudaMalloc(&d_vertex_in_cell, size);
+  cudaMemcpy(d_vertex_in_cell, h_vertex_in_cell, size, cudaMemcpyHostToDevice);
+
+  size = h_n_cells*sizeof(int);
+  cudaMalloc(&d_initial_vertices, size);
+  cudaMemcpy(d_initial_vertices, h_initial_vertices, size, cudaMemcpyHostToDevice);
+
+  size = h_n_cells*sizeof(int);
+  cudaMalloc(&d_cell_vertices_size, size);
+  cudaMemcpy(d_cell_vertices_size, h_cell_vertices_size, size, cudaMemcpyHostToDevice);
+
+  size = h_n_cells*h_n_vertices*sizeof(int);
+  cudaMalloc(&d_cell_vertices, size);
+  cudaMemcpy(d_cell_vertices, h_cell_vertices, size, cudaMemcpyHostToDevice);
+
+  size = h_n_cells*(h_n_edges+1)*sizeof(int);
+  cudaMalloc(&d_cell_heap, size);
+  cudaMemcpy(d_cell_heap, h_cell_heap, size, cudaMemcpyHostToDevice);
+
+  size = h_n_cells*sizeof(int);
+  cudaMalloc(&d_cell_heap_size, size);
+  cudaMemcpy(d_cell_heap_size, h_cell_heap_size, size, cudaMemcpyHostToDevice);
+
+
+  initDevice<<<1,1>>>(environmentArgumentList);
 
 }
 

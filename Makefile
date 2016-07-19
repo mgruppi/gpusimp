@@ -2,7 +2,7 @@ Simplify: Simp.o Surface.o SimpVertexClustering.o SimpELEN.o SimpQEM.o Classes.h
 	nvcc -O3 -std=c++11 -Xcompiler -fopenmp  Simp.o common.o kernel.o SimpQEM.o SimpELEN.o SimpGPU.o SimpVertexClustering.o Surface.o Vector3f.o -o Simplify -lCGAL
 
 Simp.o: Surface.o Simp.cpp
-	nvcc -O3 -std=c++11 -c Simp.cpp
+	g++ -O3 -std=c++11 -c Simp.cpp
 
 SimpVertexClustering.o: Surface.o SimpVertexClustering.cpp SimpVertexClustering.h
 	g++ -O3 -std=c++11 -c SimpVertexClustering.cpp

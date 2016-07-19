@@ -3,16 +3,13 @@
 #include <algorithm>
 #include <cmath>
 
-#include <thrust/sort.h>
-#include <thrust/execution_policy.h>
-
-
 
 //TIME
 long time_collapse = 0;
 long time_simplify = 0;
 long time_sorting = 0;
 long time_updating_queue = 0;
+long time_init_device = 0;
 
 //get position from header array
 //Size of each structure on arrays
@@ -30,7 +27,6 @@ const int CELL_HEADER_SIZE = 2;
 //NO.
 int n_edges = 0;
 int n_faces=0, n_vertices=0;
-
 
 //ACCESS Vertex
 #define getFaceVertexId(face,vertex) h_faces[FACE_SIZE*face+vertex]
@@ -68,45 +64,57 @@ int n_faces=0, n_vertices=0;
 #define getCellHeaderSize(cell) h_cell_header[CELL_HEADER_SIZE*cell+1]
 #define increaseCellSize(cell) h_cell_header[CELL_HEADER_SIZE*cell+1]++
 #define getCellVertexId(cell,p) h_cell_vertices[cell*n_vertices+p]
-#define getHeapHead(cell) cell*(n_edges+1)
+//#define getHeapHead(cell) cell*(n_edges+1)
 
 //HOST MEMBERS
 //VERTICES
-thrust::host_vector<double> h_vertices; //Every 3 positions of this vector is a Vertex (x,y,z)
-thrust::host_vector<bool> h_vertex_removed;
-thrust::host_vector<double> h_quadrics; //Quadrics for vertex i
+double *h_vertices; //Every 3 positions of this vector is a Vertex (x,y,z)
+bool *h_vertex_removed;
+double *h_quadrics; //Quadrics for vertex i
 //FACES
-thrust::host_vector<int> h_faces; // Every 3 positions of this vector is a face (p0,p1,p2)
-thrust::host_vector<int> h_vert_face_header; //[DATA_POSITION,DATA_SIZE,CONTINUES_TO]
-thrust::host_vector<int> h_vert_face_data; //[FACE_ID,...,FACE_ID]
-thrust::host_vector<bool> h_face_removed;
+int *h_faces; // Every 3 positions of this vector is a face (p0,p1,p2)
+int *h_vert_face_header; //[DATA_POSITION,DATA_SIZE,CONTINUES_TO]
+int *h_vert_face_data; //[FACE_ID,...,FACE_ID]
+bool *h_face_removed;
 //EDGES
-thrust::host_vector<int> h_edges; //Every 2 positions is a half-edge [vfrom,vto]
-thrust::host_vector<double> h_edge_cost; //Cost of edge i
-thrust::host_vector<int> h_edge_queue; //Queue of edges sorted by cost
-thrust::host_vector<int> h_vert_edge_from_header; //[EDGE_DATA_POSITION,EDGE_DATA_SIZE,CONTINUES_TO]
-thrust::host_vector<int> h_vert_edge_from_data; //[EDGE_ID, ..., EDGE_ID]
-thrust::host_vector<int> h_vert_edge_to_header;
-thrust::host_vector<int> h_vert_edge_to_data;
-thrust::host_vector<bool> h_edge_removed; //bool
+int *h_edges; //Every 2 positions is a half-edge [vfrom,vto]
+double *h_edge_cost; //Cost of edge i
+int *h_edge_queue; //Queue of edges sorted by cost
+int *h_vert_edge_from_header; //[EDGE_DATA_POSITION,EDGE_DATA_SIZE,CONTINUES_TO]
+int *h_vert_edge_from_data; //[EDGE_ID, ..., EDGE_ID]
+int *h_vert_edge_to_header;
+int *h_vert_edge_to_data;
+bool *h_edge_removed; //bool
 
 //UNIFORM GRID
 int n_cells;
 
 //VERTEX
-thrust::host_vector<int> h_cell_data; //contains id of vertices inside it
-thrust::host_vector<int> h_cell_header; //Cell header containing initial position and size in h_cell vector
-thrust::host_vector<int> h_vertex_in_cell;
-thrust::host_vector<int> h_initial_vertices; //Number of initial vertices in each cell
-thrust::host_vector<int> h_cell_vertices;
-thrust::host_vector<int> h_cell_vertices_size;
+int *h_cell_data; //contains id of vertices inside it
+int *h_cell_header; //Cell header containing initial position and size in h_cell vector
+int *h_vertex_in_cell;
+int *h_initial_vertices; //Number of initial vertices in each cell
+int *h_cell_vertices;
+int *h_cell_vertices_size;
 
+
+struct elem {
+  int id;
+  double cost;
+};
 
 //EDGE
-thrust::host_vector<int> h_cell_heap; //Heap of edges
-thrust::host_vector<int> h_cell_heap_size; //Size of heap
+int *h_cell_heap; //Heap of edges
+int *h_cell_heap_size; //Size of heap
+elem *h_cell_heap_data;
+int *h_cell_heap_header;
+vector<vector<int> > edge_in_cell;
 
-
+const int HEAP_HEADER_SIZE = 3;
+const int HEAP_SIZE_VERTEX_RATIO = 8;
+#define getHeapHead(cell) h_cell_heap_header[HEAP_HEADER_SIZE*(cell)]
+#define getCellHeapSize(cell) h_cell_heap_header[HEAP_HEADER_SIZE*(cell)+1]
+#define getCellMaxHeapSize(cell) h_cell_heap_header[HEAP_HEADER_SIZE*(cell)+2]
 
 
 
@@ -114,6 +122,52 @@ thrust::host_vector<int> h_cell_heap_size; //Size of heap
 double dim[3];
 double offset[3];
 int grid_res;
+//END OF HOST MEMBERS
+
+//DEVICE MEMBERS
+//DEVICE MEMBERS
+//VERTICES
+double* d_vertices; //Every 3 positions of this vector is a Vertex (x,y,z)
+bool* d_vertex_removed;
+double* d_quadrics; //Quadrics for vertex i
+//FACES
+int* d_faces; // Every 3 positions of this vector is a face (p0,p1,p2)
+int* d_vert_face_header; //[DATA_POSITION,DATA_SIZE,CONTINUES_TO]
+int* d_vert_face_data; //[FACE_ID,...,FACE_ID]
+bool* d_face_removed;
+//EDGES
+int* d_edges; //Every 2 positions is a half-edge [vfrom,vto]
+double* d_edge_cost; //Cost of edge i
+int* d_edge_queue; //Queue of edges sorted by cost
+int* d_vert_edge_from_header; //[EDGE_DATA_POSITION,EDGE_DATA_SIZE,CONTINUES_TO]
+int* d_vert_edge_from_data; //[EDGE_ID, ..., EDGE_ID]
+int* d_vert_edge_to_header;
+int* d_vert_edge_to_data;
+bool* d_edge_removed; //bool
+
+//UNIFORM GRID
+int d_n_cells;
+int d_n_faces;
+int d_n_edges;
+int d_n_vertices;
+
+//VERTEX
+int* d_cell_data; //contains id of vertices inside it
+int* d_cell_header; //Cell header containing initial position and size in h_cell vector
+int* d_vertex_in_cell;
+int* d_initial_vertices; //Number of initial vertices in each cell
+int* d_cell_vertices;
+int* d_cell_vertices_size;
+
+
+//EDGE
+int* d_cell_heap; //Heap of edges
+int* d_cell_heap_size; //Size of heap
+
+double d_dim[3];
+double d_offset[3];
+int d_grid_res;
+//END OF DEVICE MEMBERS
 
 //FUNCTIONS
 
@@ -133,21 +187,21 @@ bool compareEdges(int left, int right)
   return h_edge_cost[left] > h_edge_cost[right];
 }
 
-bool compare(int left, int right)
+bool compare(const elem &left,const elem &right)
 {
-  return h_edge_cost[left] < h_edge_cost[right];
+  return left.cost < right.cost;
 }
 
 //=====HEAP FUNCTIONS ======
 
 //Move node up
-void percUp(int i, int* heap)
+void percUp(int i, elem* heap)
 {
   while(i/2 > 0)
   {
     if(compare(heap[i], heap[i/2]))
     {
-      int aux = heap[i];
+      elem aux = heap[i];
       heap[i] = heap[i/2];
       heap[i/2] = aux;
     }
@@ -156,15 +210,21 @@ void percUp(int i, int* heap)
 }
 
 //Insert element e into heap of size n
-void insert(int e, int* heap, int& n)
+void insert(elem e, elem* heap, int& n)
 {
+  // cout << "Elem id: " << e.id << endl;
   heap[n+1] = e;
   n++;
   percUp(n, heap);
+  // for(int i = 0; i < n+1 && i < 10; i++) {
+  //   //cout << "(" << heap[i].id << ","<< heap[i].cost << ") ";
+  //   cout << "(" << heap[i].id << ") ";
+  // }
+  // cout << endl;
 }
 
 //Find child of least cost
-int minChild(int i, int* heap, int n)
+int minChild(int i, elem* heap, int n)
 {
   //Does not have right child
   if (i * 2 + 1 > n) return i*2;
@@ -174,16 +234,15 @@ int minChild(int i, int* heap, int n)
   }
 }
 
-
 //Move node down the heap
-void percDown(int i, int* heap, int n)
+void percDown(int i, elem* heap, int n)
 {
   while(i*2 <= n)
   {
     int mc = minChild(i, heap, n);
     if(compare(heap[mc],heap[i]))
     {
-      int tmp = heap[mc];
+      elem tmp = heap[mc];
       heap[mc] = heap[i];
       heap[i] = tmp;
     }
@@ -192,9 +251,9 @@ void percDown(int i, int* heap, int n)
 }
 
 //Pop element of least value
-int pop(int* heap, int& n)
+elem pop(elem* heap, int& n)
 {
-  int ret = heap[1];
+  elem ret = heap[1];
   heap[1] = heap[n];
   n--;
   percDown(1, heap, n);
@@ -202,7 +261,7 @@ int pop(int* heap, int& n)
 }
 
 //Turn vector into heap or update heap
-void heapify(int* vec, int n)
+void heapify(elem* vec, int n)
 {
   int i = n/2;
   while( i > 0)
@@ -276,8 +335,8 @@ void quadricCopy(double* a, double* b)
 double getCost(int eid)
 {
   double tempQ[16] = {0}; //Temporary placement quadric
-  quadricCopy(tempQ,h_quadrics.data()+(QUADRIC_SIZE*getEdgeVertexId(eid,0)));
-  quadricAdd(tempQ,h_quadrics.data()+(QUADRIC_SIZE*getEdgeVertexId(eid,1)));
+  quadricCopy(tempQ,h_quadrics+(QUADRIC_SIZE*getEdgeVertexId(eid,0)));
+  quadricAdd(tempQ,h_quadrics+(QUADRIC_SIZE*getEdgeVertexId(eid,1)));
 
 
   double tempV[4];//TEmporary vertex placement
@@ -324,14 +383,13 @@ void SimpGPU::initUniformGrid()
   dim[1] = s->bbox.getYLen()/grid_res;
   dim[2] = s->bbox.getZLen()/grid_res;
 
-
   for(int i = 0; i < n_cells; ++i)
   {
     h_initial_vertices[i] = 0;
     //h_cell_queue_size[i] = 0;
     h_cell_vertices_size[i] = 0;
-
-    h_cell_heap_size[i] = 0;
+    getHeapHead(i) = 0;
+    getCellHeapSize(i) = 0;
   }
 
   //Compute gridcell for each vertex
@@ -360,11 +418,26 @@ void SimpGPU::initUniformGrid()
     h_cell_vertices[cpos*n_vertices+h_cell_vertices_size[cpos]] = i;
     h_cell_vertices_size[cpos]++;
   }
-
   //Now we compute edge queues for each cell
   //An edge will be added to queue iff it is entirely in cell and both endpoints have crown entirely in the same cell
+  edge_in_cell.clear();
   for(int i = 0; i < n_cells;++i)
   {
+    // vector<int> vec_temp;//DEBUG
+  	//set estimate size of heap cell
+    //cerr << "Cell " << i << ":\n";
+  	getCellHeapSize(i) = 0;
+  	getCellMaxHeapSize(i) = HEAP_SIZE_VERTEX_RATIO*h_initial_vertices[i];
+
+    if(i!=0) {
+      getHeapHead(i) =  getHeapHead(i-1)+getCellMaxHeapSize(i-1)+1;
+    } else
+      getHeapHead(i) = 0;
+
+    //cerr << "Head: " << getHeapHead(i) << " - MaxSize: " << getCellMaxHeapSize(i) << endl;
+  	//getHeapHead(i) = (i==0 ? 0: getHeapHead(i-1)+getCellMaxHeapSize(i-1)+1);
+
+  	//cerr << "Cell " << i << endl;
     //For every vertex in the cell, we get its edge
     for(int j = 0; j < h_cell_vertices_size[i]; ++j)
     {
@@ -372,17 +445,35 @@ void SimpGPU::initUniformGrid()
       for(int k = 0; k < getEdgeFromCurrSize(getCellVertexId(i,j)); ++k)
       {
         int eid = getEdgeFromDataId(getCellVertexId(i,j),k);
-
         //cerr << "edge " << eid << " in " << i << " - edges: " << endl;
         if(isEntirelyInCell(eid) && isCrownInCell(getEdgeVertexId(eid,0)) && isCrownInCell(getEdgeVertexId(eid,1)))
         {
-          insert(eid, h_cell_heap.data()+getHeapHead(i), h_cell_heap_size[i]);
+          //cerr << "Eid: " << eid << " " << endl;
+          //cout << "" << h_cell_heap_data+getHeapHead(i) << " ";
+          elem temp = {eid,h_edge_cost[eid]};
+          insert(temp, h_cell_heap_data+getHeapHead(i), getCellHeapSize(i));
+          // vec_temp.push_back(eid);
         }
       }
     }
+    // edge_in_cell.push_back(vec_temp);
   }
-
   //CUDA
+
+  //Felippe
+  // cerr << "aki" << endl;
+  // int num = 0;
+  // for(vector<vector<int> >::iterator it = edge_in_cell.begin(); it < edge_in_cell.end();++it){
+  //   std::sort(it->begin(),it->end(),compareEdges);
+  //   cerr << "Cell " << num << endl;
+  //   for(vector<int>::iterator it2 = it->begin(); it2 < it->end(); it2++) {
+  //     cerr << "(" << *it2 << ","<< h_edge_cost[*it2] << ") " << endl;
+  //   }
+  //   cerr << endl;
+  //   num++;
+  // }
+  // cerr << "aki2" << endl;
+
 
   int* h_array = new int[100];
   int* d_a;
@@ -395,7 +486,7 @@ void SimpGPU::initUniformGrid()
     //cerr << h_array[i] << " ";
   }
   cerr << endl;
-  allocate(h_array, d_a);
+  //allocate(h_array, d_a);
 
   // for(int i = 0; i < 100; ++i)
   // {
@@ -403,10 +494,15 @@ void SimpGPU::initUniformGrid()
   // }
   // cerr << endl;
 
+  // for(int i = 0; i < n_cells; i++) {
+  //   cerr << "Cell " << i << " - HeapHead: " << getHeapHead(i) << " - HeapSize: " << getCellHeapSize(i) << " - MaxSize: " << getCellMaxHeapSize(i) << endl;
+  // }
 
   gettime(tu1);
   tu = diff(tu0,tu1);
   cerr << "Time to initialize uniform grid: " << getMilliseconds(tu) << endl;
+
+
 
 }
 
@@ -656,13 +752,49 @@ void updateQueue(int cell)
   timespec ts, ts0, ts1;
   gettime(ts0);
   //cerr << "Heapify\n";
-  heapify(h_cell_heap.data()+getHeapHead(cell), h_cell_heap_size[cell]);
+  //heapify(h_cell_heap+getHeapHead(cell), h_cell_heap_size[cell]);
   //std::sort(h_cell_queue.data()+(cell*n_edges),h_cell_queue.data()+(cell*n_edges+h_cell_queue_size[cell]),compareEdges);
   gettime(ts1);
   ts = diff(ts0,ts1);
   time_sorting+=getNanoseconds(ts);
 
 
+}
+
+void updateHeap(int vid,int cell) {
+	timespec ts, ts0, ts1;
+  gettime(ts0);
+		//cerr <<"Updating costs for vid " << vid << endl;
+	elem temp;
+	for(int i = 0 ; i < getEdgeFromCurrSize(vid); ++i)
+	{
+		int eid = getEdgeFromDataId(vid,i);
+		if(isEntirelyInCell(eid) && isCrownInCell(getEdgeVertexId(eid,0)) && isCrownInCell(getEdgeVertexId(eid,1)))
+		{
+			temp.id = eid;
+			temp.cost = h_edge_cost[eid];
+			insert(temp,h_cell_heap_data+getHeapHead(cell), getCellHeapSize(cell));
+			//h_edge_cost[eid] = getCost(eid);
+		}
+	}
+	for(int i = 0; i < getEdgeToCurrSize(vid); ++i)
+	{
+
+		int eid = getEdgeToDataId(vid,i);
+		//cerr << "Updating eid " << eid << " " << h_edges[eid*EDGE_SIZE] << "-" << h_edges[eid*EDGE_SIZE+1] << " = " << h_edge_cost[eid] << " ";
+		if(isEntirelyInCell(eid) && isCrownInCell(getEdgeVertexId(eid,0)) && isCrownInCell(getEdgeVertexId(eid,1)))
+		{
+			temp.id = eid;
+			temp.cost = h_edge_cost[eid];
+			insert(temp,h_cell_heap_data+getHeapHead(cell), getCellHeapSize(cell));
+			//h_edge_cost[eid] = getCost(eid);
+		}
+		//cerr << " = " << h_edge_cost[eid] << endl;
+	}
+	gettime(ts1);
+  ts = diff(ts0,ts1);
+  time_sorting+=getNanoseconds(ts);
+	//std::sort(h_cell_queue.data()+(h_vertex_in_cell[vid]*n_cells),h_cell_queue.data()+(h_vertex_in_cell[vid]*n_cells+h_cell_queue_size[vid]),compareEdges);
 }
 
 void SimpGPU::simplify(int goal, int gridres=1)
@@ -675,7 +807,7 @@ void SimpGPU::simplify(int goal, int gridres=1)
   cerr << "Computing edges...\n";
   initEdges();
 
-
+  int dropHeap = 0;
 
   int vertices_removed = 0;
   cerr << "Target vertex count: " << n_vertices - goal << endl;
@@ -688,16 +820,24 @@ void SimpGPU::simplify(int goal, int gridres=1)
   n_cells = gridres*gridres*gridres;
 
 
-  h_vertex_in_cell.resize(n_vertices);
+  h_vertex_in_cell = new int[n_vertices];
 
-  h_initial_vertices.resize(n_cells);
-  h_cell_vertices_size.resize(n_cells);
-  h_cell_vertices.resize(n_cells*n_vertices);
+  h_initial_vertices = new int[n_cells];
+  h_cell_vertices_size = new int[n_cells];
+  h_cell_vertices = new int[n_cells*n_vertices];
 
-  h_cell_heap.resize(n_cells*(n_edges+1));
-  h_cell_heap_size.resize(n_cells);
+  h_cell_heap_data = new elem [HEAP_SIZE_VERTEX_RATIO*n_vertices];
+  h_cell_heap_header = new int [HEADER_SIZE*n_cells];
 
 
+  timespec tdev, tdev0, tdev1;
+
+  gettime(tdev0);
+  initDeviceEnvironment(hostArgumentList, environmentArgumentList);
+  gettime(tdev1);
+
+  tdev = diff(tdev0,tdev1);
+  time_init_device += getNanoseconds(tdev);
 
   while(vertices_removed < goal)
   {
@@ -710,14 +850,47 @@ void SimpGPU::simplify(int goal, int gridres=1)
     {
 
       int vr = 0;
-      if(h_cell_heap_size[i] == 0) continue; //Cell is empty, move to next one
 
-      while(vr < h_initial_vertices[i]/grid_res && vertices_removed < goal && h_cell_heap_size[i]>0)
+      if(getCellHeapSize(i) == 0) continue; //Cell is empty, move to next one
+      // cout << "Cell " << i << endl;
+      while(vr < h_initial_vertices[i]/grid_res && vertices_removed < goal && getCellHeapSize(i)>0)
       {
+        elem edge = pop(h_cell_heap_data+getHeapHead(i), getCellHeapSize(i));
+        if(h_edge_removed[edge.id]){
+          // for(vector<int>::iterator it = edge_in_cell[i].begin(); it < edge_in_cell[i].end();it++) {
+          //   if(*it == edge.id) {
+          //     edge_in_cell[i].erase(it);
+          //   }
+          // }
+          continue;
+        }
+        if(edge.cost != h_edge_cost[edge.id]) { dropHeap++; continue;}
 
 
-        int eid = pop(h_cell_heap.data()+getHeapHead(i), h_cell_heap_size[i]);
-        if(h_edge_removed[eid]) continue;
+        /*Felippe
+        std::sort(edge_in_cell[i].begin(),edge_in_cell[i].end(),compareEdges);
+        while(h_edge_removed[edge_in_cell[i].back()]) {
+          edge_in_cell[i].pop_back();
+        }
+        cout << "Lesser cost edge: " << edge_in_cell[i].back() << endl;
+        if(h_edge_removed[edge_in_cell[i].back()])
+          cout << "Lesser Cost Edge already removed!!!!!!!!!!!!!!!" << endl;
+        cout << "Heap top: " << edge.id << endl;
+        if(h_edge_removed[edge.id])
+          cout << "Heap Top Edge already removed!!!!!!!!!!!!!!!" << endl;
+        cout << "Elem Cost: " << edge.cost << " - Current Cost: " << h_edge_cost[edge.id] << endl;
+
+        if(edge_in_cell[i].back() != edge.id) {
+          if( h_edge_cost[edge_in_cell[i].back()] != edge.cost)
+            cout << "Houston!! We have a problem" << endl;
+          for(int it = edge_in_cell[i].size()-1; it >= 0;it--)
+            if(edge_in_cell[i][it] == edge.id) {
+              cout << "Edge found at posstion: " << it << " WTF??" << endl;
+              cout << "Costs: Top Queue(" << h_edge_cost[edge_in_cell[i].back()] << ") - Top Heap Current(" << h_edge_cost[edge.id] << ")" <<endl;
+            }
+        }
+        */
+
 
         //cerr << "eid " << eid << endl;
 
@@ -746,19 +919,25 @@ void SimpGPU::simplify(int goal, int gridres=1)
         //cin.get();
         timespec t, t0, t1;
         gettime(t0);
-        collapse(eid);
+        collapse(edge.id);
         gettime(t1);
 
+        // cout << "Removed " << edge.id << endl;
+        // cout << "----------------------------------------------------------" << endl;
+        // edge_in_cell[i].pop_back();
         t = diff(t0,t1);
         time_collapse+=getNanoseconds(t);
 
 
-        quadricAdd(h_quadrics.data()+(h_edges[eid*EDGE_SIZE+1]*QUADRIC_SIZE), h_quadrics.data()+(h_edges[eid*EDGE_SIZE]*QUADRIC_SIZE));
+        quadricAdd(h_quadrics+(h_edges[edge.id*EDGE_SIZE+1]*QUADRIC_SIZE), h_quadrics+(h_edges[edge.id*EDGE_SIZE]*QUADRIC_SIZE));
         vr++;
         vertices_removed++;
-        updateEdgeCosts(getEdgeVertexId(eid,1));
+        updateEdgeCosts(getEdgeVertexId(edge.id,1));
         gettime(t0);
-        updateQueue(i);
+        //updateQueue(i);
+
+        updateHeap(getEdgeVertexId(edge.id,1),i);
+
         gettime(t1);
 
         t = diff(t0,t1);
@@ -775,7 +954,7 @@ void SimpGPU::simplify(int goal, int gridres=1)
 
   printTimes();
 
-
+  cerr << "Edges dropped: " << dropHeap << endl;
   updateSurface();
 
 }
@@ -784,15 +963,15 @@ void SimpGPU::initDataStructures()
 {
   n_faces = s->m_faces.size();
   n_vertices = s->m_points.size();
-  h_faces.resize(FACE_SIZE*n_faces);
-  h_face_removed.resize(n_faces);
-  h_vertices.resize(VERTEX_SIZE*n_vertices);
-  h_vertex_removed.resize(n_vertices);
-  h_quadrics.resize(16*n_vertices);
+  h_faces = new int[FACE_SIZE*n_faces];
+  h_face_removed = new bool[n_faces];
+  h_vertices = new double[VERTEX_SIZE*n_vertices];
+  h_vertex_removed = new bool[n_vertices];
+  h_quadrics = new double[16*n_vertices];
 
 
-  h_vert_face_header.resize(HEADER_SIZE*n_vertices);
-  h_vert_face_data.resize(FACE_DATA_BATCH_SIZE*n_vertices);
+  h_vert_face_header = new int[HEADER_SIZE*n_vertices];
+  h_vert_face_data = new int[FACE_DATA_BATCH_SIZE*n_vertices];
 
   //TODO:Read surface in this format.
   for(int i = 0; i < s->m_points.size(); ++i)
@@ -867,11 +1046,12 @@ void SimpGPU::initEdges()
   timespec te, te0, te1;
 
   gettime(te0);
-  h_edges.resize(n_faces*6);//Estimate an initial size for edge vector
-  h_vert_edge_from_header.resize(HEADER_SIZE*n_vertices);
-  h_vert_edge_from_data.resize(EDGE_DATA_BATCH_SIZE*n_vertices);
-  h_vert_edge_to_header.resize(HEADER_SIZE*n_vertices);
-  h_vert_edge_to_data.resize(EDGE_DATA_BATCH_SIZE*n_vertices);
+
+  h_edges = new int[n_faces*6];//Estimate an initial size for edge vector
+  h_vert_edge_from_header = new int[HEADER_SIZE*n_vertices];
+  h_vert_edge_from_data = new int[EDGE_DATA_BATCH_SIZE*n_vertices];
+  h_vert_edge_to_header = new int[HEADER_SIZE*n_vertices];
+  h_vert_edge_to_data = new int[EDGE_DATA_BATCH_SIZE*n_vertices];
 
   //init HEADER array
   for(int i = 0; i < n_vertices; ++i)
@@ -935,8 +1115,9 @@ void SimpGPU::initEdges()
 
   //COMPUTE COSTS
   n_edges = eid;
-  h_edge_cost.resize(n_edges);
-  h_edge_removed.resize(n_edges);
+  h_edge_cost = new double[n_edges];
+  h_edge_removed = new bool[n_edges];
+
   //h_edge_queue.resize(n_edges);
   for(int i = 0; i < eid; ++i)
   {
@@ -1006,7 +1187,7 @@ void SimpGPU::initQuadrics()
           }
         }
         //Add Kp to i's quadric here.
-        quadricAdd(h_quadrics.data()+(QUADRIC_SIZE*i),Kp);
+        quadricAdd(h_quadrics+(QUADRIC_SIZE*i),Kp);
 
       }
   }
@@ -1043,7 +1224,8 @@ void SimpGPU::updateSurface()
 void printTimes()
 {
   cerr << "Time updating queue: " << time_updating_queue/1000000 << " ms\n";
-  cerr << "\t->Time sorting: " << time_sorting/1000000 << " ms\n";
+  cerr << "\t->Updating heap: " << time_sorting/1000000 << " ms\n";
+  cerr << "Time init device: " << time_init_device/1000000 << " ms\n";
   cerr << "Time collapsing: " << time_collapse/1000000 << " ms\n";
   cerr << "Time simplifying (total): " << time_simplify/1000000 << " ms\n";
 }
